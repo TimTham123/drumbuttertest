@@ -47,18 +47,24 @@ Detailed documents:
 The development environment for this delivery was a **Linux container** (GCC 13,
 CMake 3.28) with no Windows toolchain. Windows binaries therefore come from CI.
 
-| Item | Linux (dev container) | Windows x64 / MSVC |
+| Item | Linux (dev container) | Windows x64 / MSVC (GitHub Actions, `windows-latest`) |
 |---|---|---|
-| DSP core + offline harness (`dscore_tests`) | built and run: all checks pass (see TEST_REPORT.md) | built and run by GitHub Actions (`.github/workflows/build.yml`), if Actions is enabled for the repo |
-| Plugin VST3 + Standalone | built (`.so` VST3 bundle, ELF standalone) | built by GitHub Actions; artefact **DrumSpread-Windows-x64** contains `DrumSpread.vst3` and `DrumSpread.exe` |
-| Plugin-level tests (`plugin_tests`: state, presets, A/B, layouts, latency, RT allocations, UI snapshots) | built and run under Xvfb: all pass | run by GitHub Actions |
-| Host validation with pluginval (strictness 10: scan, editor, processing, state, automation, thread safety, fuzzing) | **SUCCESS** for the Linux VST3 (log in `docs/`) | run by GitHub Actions on the Windows VST3 |
+| DSP core + offline harness (`dscore_tests`) | built and run: all checks pass (see TEST_REPORT.md) | built and run in CI: **117/117 checks pass** (the CPU check is informational on shared runners) |
+| Plugin VST3 + Standalone | built (`.so` VST3 bundle, ELF standalone) | **built in CI**; artefact **DrumSpread-Windows-x64** contains `DrumSpread.vst3` and `DrumSpread.exe` |
+| Plugin-level tests (`plugin_tests`: state, presets, A/B, layouts, latency, RT allocations, UI snapshots) | built and run under Xvfb: all pass | run in CI: **22/22 pass** |
+| Host validation with pluginval (strictness 10: scan, editor, processing, state, automation, thread safety, fuzzing) | **SUCCESS** for the Linux VST3 (log in `docs/`) | **SUCCESS** for the Windows VST3 in CI |
 | Steinberg VST3 SDK validator, extended mode | **537/537 passed** for the Linux VST3 (log in `docs/`) | not run |
 | Loading in a commercial DAW | **not tested** (none available here) | **not tested** |
 
+Windows evidence: run [38042364854](https://github.com/TimTham123/drumbuttertest/actions/runs/38042364854)
+(commit `5ff6796`, the same code as the current branch head; later commits only
+change documentation). The Windows binaries are under that run's
+**Artifacts**. You need to be signed in to GitHub to download them, and GitHub
+keeps artefacts for 90 days by default.
+
 The code is plain C++17 with no compiler-specific extensions, and builds
 warning-free under GCC with `-Wall -Wextra -Wshadow` and JUCE's recommended
-warning set. The MSVC build is checked only by CI.
+warning set. The MSVC build was compiled and tested only in CI, never locally.
 
 ---
 

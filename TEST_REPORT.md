@@ -27,7 +27,12 @@ Every number below was measured by the harness in this run.
 ## Test environment and what was **not** tested here
 
 - Everything in this report was measured on **Linux x86-64 (GCC 13.3, Release)** in the development container.
-- **Windows/MSVC:** the same harness and plugin tests are run by the GitHub Actions workflow (`.github/workflows/build.yml`, job `windows-msvc`). Its reports are uploaded as the build artefact *DrumSpread-Windows-test-output*. The numbers below are not from Windows.
+- **Windows/MSVC:** the GitHub Actions workflow (`.github/workflows/build.yml`, job `windows-msvc`, `windows-latest`, MSVC x64 Release) runs the same harness and plugin tests and pluginval. Run [38042364854](https://github.com/TimTham123/drumbuttertest/actions/runs/38042364854) at commit `5ff6796` gave these results:
+  - harness **117/117 checks pass**, including every null, latency, click, block-size and sample-rate check (the CPU gate is informational on shared runners);
+  - `plugin_tests` **22/22 pass**;
+  - pluginval strictness 10 **SUCCESS**.
+
+  The Windows reports are in the build artefact *DrumSpread-Windows-test-output*; the numbers below are not from Windows.
 - **Not tested:** loading the VST3 in a commercial DAW (none available here; pluginval is the host used instead, see below), and listening tests. The perceived quality of the presets was not judged by ear. The harness checks objective sanity only: level change, peak ≤ ceiling, crest factor and finiteness.
 - CPU numbers depend on the machine; the build machine is a shared cloud VM (4 vCPU).
 
@@ -497,7 +502,8 @@ The Linux VST3 built here was validated in-process with `pluginval --strictness-
 - **Result: SUCCESS.** All 25 test groups passed: scan, open cold/warm, plugin info, programs, editor, open editor while processing, audio processing, non-releasing processing, plugin state, state restoration, automation, editor automation, automatable parameters, parameters, background-thread state, parameter thread safety, the bus tests and parameter fuzzing.
 - The first run failed "Plugin state restoration" for three bool parameters. A host-set value of 0.49 (bool = false) was not re-synced after restoring a saved 0, because JUCE's APVTS skips unchanged denormalised values. This is fixed in `setStateInformation` and covered by the plugin test "state restore after arbitrary host values".
 - pluginval's Steinberg "vst3 validator" sub-test was skipped inside pluginval. The official validator was therefore built separately from the Steinberg VST3 SDK (`steinbergmedia/vst3sdk`, `public.sdk/samples/vst-hosting/validator`) and run in extended mode (`validator -e`): **537 tests passed, 0 failed**. Log: `docs/vst3_validator_extended.txt`. The validator notes "64bit Audio Processing not supported"; the plugin processes 32-bit float, which is expected.
-- Full log: `docs/pluginval_linux_strictness10.txt`. The CI workflow runs the same validation on the Windows build.
+- Full log: `docs/pluginval_linux_strictness10.txt`. The CI workflow runs the same validation on the Windows build, and it also reports **SUCCESS** there (run 38042364854).
+- pluginval's "Plugin info" step prints `Reported latency: 0`. This is not a plugin fault. JUCE's VST3 host reads the plugin latency only inside `prepareToPlay`, and that step runs before any prepare. After preparing, the processor reports 1098 samples (48 kHz, 2×, WARP HQ). The plugin tests check this value, and check that host bypass equals the input delayed by exactly that latency.
 
 ## Plugin-level tests (`plugin_tests`, JUCE)
 
