@@ -13,6 +13,12 @@
  #define DS_HAS_SSE 0
 #endif
 
+#if defined(__aarch64__) || defined(_M_ARM64)
+ #define DS_HAS_ARM64_FPCR 1
+#else
+ #define DS_HAS_ARM64_FPCR 0
+#endif
+
 namespace ds
 {
 constexpr double kPiD = 3.14159265358979323846;
@@ -47,7 +53,7 @@ inline float flushTiny (float x) noexcept { return (std::fabs (x) < 1.0e-24f) ? 
 
 inline bool isFiniteF (float x) noexcept { return std::isfinite (x); }
 
-/** RAII guard enabling flush-to-zero / denormals-are-zero on x86. */
+/** RAII guard enabling flush-to-zero (x86 FTZ/DAZ, ARM64 FPCR.FZ). */
 class DenormalGuard
 {
 public:
@@ -56,12 +62,17 @@ public:
 #if DS_HAS_SSE
         saved = _mm_getcsr();
         _mm_setcsr (saved | 0x8040u);
+#elif DS_HAS_ARM64_FPCR && (defined(__GNUC__) || defined(__clang__))
+        __asm__ __volatile__ ("mrs %0, fpcr" : "=r"(saved));
+        __asm__ __volatile__ ("msr fpcr, %0" : : "r"(saved | (1ull << 24)));
 #endif
     }
     ~DenormalGuard() noexcept
     {
 #if DS_HAS_SSE
         _mm_setcsr (saved);
+#elif DS_HAS_ARM64_FPCR && (defined(__GNUC__) || defined(__clang__))
+        __asm__ __volatile__ ("msr fpcr, %0" : : "r"(saved));
 #endif
     }
     DenormalGuard (const DenormalGuard&) = delete;
@@ -70,6 +81,8 @@ public:
 private:
 #if DS_HAS_SSE
     unsigned int saved = 0;
+#elif DS_HAS_ARM64_FPCR
+    unsigned long long saved = 0;
 #endif
 };
 

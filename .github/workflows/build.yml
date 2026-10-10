@@ -93,3 +93,95 @@ jobs:
           name: DrumSpread-Linux-test-output
           path: test_output/
           if-no-files-found: warn
+
+  macos:
+    name: macOS universal (arm64 + x86_64) - VST3 + AU + Standalone + tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (universal, macOS 10.13+)
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+
+      - name: Build
+        run: cmake --build build --parallel 4
+
+      - name: Check both architectures are present
+        run: |
+          set -e
+          A=build/DrumSpread_artefacts/Release
+          for f in "$A/VST3/DrumSpread.vst3/Contents/MacOS/DrumSpread" \
+                   "$A/AU/DrumSpread.component/Contents/MacOS/DrumSpread" \
+                   "$A/Standalone/DrumSpread.app/Contents/MacOS/DrumSpread"; do
+            echo "$f: $(lipo -archs "$f")"
+            lipo -archs "$f" | grep -q arm64
+            lipo -archs "$f" | grep -q x86_64
+          done
+
+      - name: DSP verification harness (Apple Silicon, native)
+        run: ./build/dscore_tests test_output test_output/TEST_REPORT_macos_arm64.md --no-perf-gate
+
+      - name: DSP verification harness (Intel slice under Rosetta)
+        run: |
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            arch -x86_64 ./build/dscore_tests test_output_x86 test_output/TEST_REPORT_macos_x86_64.md --no-perf-gate --no-renders
+          else
+            echo "Rosetta not available on this runner; Intel slice not run"
+          fi
+
+      - name: Plugin-level tests
+        run: ./build/plugin_tests_artefacts/Release/plugin_tests test_output
+
+      - name: Ad-hoc code sign
+        run: |
+          A=build/DrumSpread_artefacts/Release
+          codesign --force --deep --sign - "$A/VST3/DrumSpread.vst3"
+          codesign --force --deep --sign - "$A/AU/DrumSpread.component"
+          codesign --force --deep --sign - "$A/Standalone/DrumSpread.app"
+          codesign --verify --deep --verbose=1 "$A/AU/DrumSpread.component"
+
+      - name: Validate the Audio Unit (Apple auval)
+        run: |
+          set -o pipefail
+          mkdir -p ~/Library/Audio/Plug-Ins/Components test_output/auval
+          cp -R build/DrumSpread_artefacts/Release/AU/DrumSpread.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 3
+          auval -v aufx DsPr DsAu | tee test_output/auval/auval.txt
+
+      - name: Validate the VST3 and AU in a host (pluginval, strictness 10)
+        run: |
+          set -o pipefail
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -o -q pluginval.zip -d pluginval
+          PV=pluginval/pluginval.app/Contents/MacOS/pluginval
+          mkdir -p test_output/pluginval
+          $PV --strictness-level 10 --validate-in-process --timeout-ms 600000 --output-dir test_output/pluginval \
+            --validate build/DrumSpread_artefacts/Release/VST3/DrumSpread.vst3 | tee test_output/pluginval/pluginval_vst3.txt
+          $PV --strictness-level 10 --validate-in-process --timeout-ms 600000 --output-dir test_output/pluginval \
+            --validate ~/Library/Audio/Plug-Ins/Components/DrumSpread.component | tee test_output/pluginval/pluginval_au.txt
+
+      - name: Package portable zip
+        run: |
+          A=build/DrumSpread_artefacts/Release
+          P=DrumSpread-macOS
+          mkdir -p "$P"
+          cp -R "$A/VST3/DrumSpread.vst3" "$A/AU/DrumSpread.component" "$A/Standalone/DrumSpread.app" "$P/"
+          cp packaging/macos/README_MAC.txt packaging/macos/install.command "$P/"
+          chmod +x "$P/install.command"
+          ditto -c -k --sequesterRsrc --keepParent "$P" DrumSpread-macOS-universal.zip
+
+      - name: Upload portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: DrumSpread-macOS-universal
+          path: DrumSpread-macOS-universal.zip
+          if-no-files-found: error
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DrumSpread-macOS-test-output
+          path: test_output/
+          if-no-files-found: warn

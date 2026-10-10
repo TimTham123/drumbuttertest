@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 3.22)
 
+# macOS: universal binary (Apple Silicon + Intel), runs on macOS 10.13+.
+# Must be set before project(); override on the command line if needed.
+if(APPLE)
+    if(NOT CMAKE_OSX_ARCHITECTURES)
+        set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
+    endif()
+    if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS version")
+    endif()
+endif()
+
 project(DrumSpread VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -73,6 +84,12 @@ if(DS_BUILD_PLUGIN)
         GIT_SHALLOW    TRUE)
     FetchContent_MakeAvailable(JUCE)
 
+    # Audio Unit is added on macOS (Logic Pro, GarageBand need it)
+    set(DS_FORMATS VST3 Standalone)
+    if(APPLE)
+        list(APPEND DS_FORMATS AU)
+    endif()
+
     juce_add_plugin(DrumSpread
         COMPANY_NAME "DrumSpread Audio"
         COMPANY_CODE "DsAu"
@@ -80,7 +97,8 @@ if(DS_BUILD_PLUGIN)
         PLUGIN_CODE "DsPr"
         PRODUCT_NAME "DrumSpread"
         BUNDLE_ID "com.drumspread.drumspread"
-        FORMATS VST3 Standalone
+        FORMATS ${DS_FORMATS}
+        AU_MAIN_TYPE kAudioUnitType_Effect
         IS_SYNTH FALSE
         NEEDS_MIDI_INPUT FALSE
         NEEDS_MIDI_OUTPUT FALSE
