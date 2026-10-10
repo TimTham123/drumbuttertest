@@ -103,10 +103,33 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
-### macOS
+### macOS (universal: Apple Silicon + Intel, macOS 10.15+)
 
-`cmake -S . -B build -G Xcode` then `cmake --build build --config Release`. This
-path is untested.
+Prebuilt: the CI artefact **DrumSpread-macOS-universal** (for example from
+[run 38044712332](https://github.com/TimTham123/drumbuttertest/actions/runs/38044712332))
+is a portable zip containing:
+- `DrumSpread.app`
+- `DrumSpread.vst3`
+- `DrumSpread.component` (Audio Unit)
+- `install.command`
+- `README_MAC.txt`
+
+The builds are signed ad hoc but not notarized: use right-click > Open the
+first time, or run `install.command`.
+
+CI results for that run (macos-14):
+- `lipo` confirms both architectures.
+- Harness 117/117 on arm64, and 117/117 for the x86_64 slice under Rosetta.
+- `plugin_tests` 22/22.
+- Apple `auval`: AU VALIDATION SUCCEEDED.
+- pluginval strictness 10: SUCCESS for both VST3 and AU.
+
+To build from source (needs Xcode command-line tools and CMake):
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
+The outputs are in `build/DrumSpread_artefacts/Release/{VST3,AU,Standalone}`.
 
 ### Options
 
