@@ -187,11 +187,12 @@ naturally ("transient-only send" is the classic trick for a clean room).
   - White: xorshift32, uniform, decorrelated L/R.
   - Pink: Paul Kellet's refined 7-pole filter.
   - Crackle: Poisson-distributed impulses with random amplitude and polarity,
-    density 4 kHz, through a 1-pole HP.
+    density 4 kHz, through a first-difference emphasis (x − 0.6·x₋₁).
   - Band: white noise through a resonant SVF bandpass with Q 2.5.
-- Tone: for White/Pink/Crackle, a tilt from dark (LP at 1.5 kHz) to bright
-  (HP at 3 kHz) via a 1-pole crossover. For Band, the center frequency runs
-  from 300 Hz to 12 kHz (log).
+- Tone: for White/Pink/Crackle, a 1-pole split at 2 kHz whose low and high
+  halves are blended from dark (low half only) to bright (high half only),
+  flat at 50 %. For Band, the center frequency runs from 300 Hz to 12 kHz
+  (log).
 - Envelope: 0.5 ms attack, then exponential decay with T60 = `decay`, scaled
   by velocity. Changing type crossfades over 20 ms.
 - Trigger LEDs: an atomic flag per detector, read by the UI at 30 Hz.
@@ -219,8 +220,9 @@ Phase vocoder with transient phase reset and cepstral formant envelope:
     largely unaffected.
 - Linked mode: effective formant = formant + pitch, so with formant = 0 it
   behaves like a varispeed shift.
-- Transients: frame-to-frame high-frequency-weighted log-spectral flux above a
-  threshold flags a transient frame. All output phases are then reset to the
+- Transients: a frame whose high-frequency-weighted spectral energy (Σ k·|X_k|²)
+  rises more than 6 dB above the previous frame's flags a transient. There is
+  a 2-frame minimum spacing. All output phases are then reset to the
   analysis phases of their source bins (Röbel/Duxbury-style phase reset). With
   centered frames, a click at the frame center stays vertically coherent.
 - Loudness matching. The raw PV output level drifted from −11 dB to
@@ -326,9 +328,9 @@ Runs at the oversampled rate.
 | Tape | +6 dB pre-emphasis shelf (3 kHz) → soft saturator with mild asymmetry and a simple hysteresis term (state-dependent offset) → matching de-emphasis; head-bump bell +1.5 dB at 70 Hz; HF loss that grows with drive |
 | Tube | triode-like asymmetric curve (positive side tanh, negative side harder grid-conduction knee), dynamic bias that follows the signal envelope ("bloom") → strong 2nd harmonic |
 | Transformer | flux model: leaky integrator → soft saturation (x/(1+|x|³)^(1/3)) → leaky differentiator. LF saturates first, as in a real core |
-| Diode | Shockley-style asymmetric diode pair (1 vs 2 diodes in series) using a smooth asinh law, with a mid-hump pre-filter (HP 300 Hz) |
+| Diode | Shockley-style asymmetric diode pair (1 vs 2 diodes in series) using a smooth asinh law, between a +6 dB pre-emphasis high shelf at 1.2 kHz and the matching de-emphasis (upper mids clip first) |
 | Fuzz | very high gain, asymmetric hard-knee clip with envelope-dependent bias starvation (sputter/gating on decays) |
-| Crush | bit-depth reduction (Drive → 16…2 bits, with TPDF-free truncation for grit) + sample-and-hold rate reduction (Tone → 1…32× hold). Tone acts on the hold factor instead of tilt |
+| Crush | bit-depth reduction (Drive → 16…2 bits, plain rounding with no dither, for grit) + sample-and-hold rate reduction (Tone → 1…32× hold). Tone acts on the hold factor instead of tilt |
 
 Mode changes crossfade over 25 ms.
 
