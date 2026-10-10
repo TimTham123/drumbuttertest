@@ -1,4 +1,4 @@
-DrumSpread for macOS (universal: Apple Silicon + Intel, macOS 10.13 or newer)
+DrumSpread for macOS (universal: Apple Silicon + Intel, macOS 10.15 or newer)
 =============================================================================
 
 What's in this folder

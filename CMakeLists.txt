@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
 
-# macOS: universal binary (Apple Silicon + Intel), runs on macOS 10.13+.
+# macOS: universal binary (Apple Silicon + Intel), runs on macOS 10.15+.
 # Must be set before project(); override on the command line if needed.
 if(APPLE)
     if(NOT CMAKE_OSX_ARCHITECTURES)
         set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
     endif()
     if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS version")
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
     endif()
 endif()
 
