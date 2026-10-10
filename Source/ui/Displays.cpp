@@ -23,11 +23,11 @@ Knob::Knob (DrumSpreadProcessor& p, int idx, juce::Colour accent, const juce::St
 
 void Knob::resized()
 {
-    auto r = getLocalBounds();
+    // knob and label form one group, centred vertically in the cell
     const int labelH = juce::jlimit (11, 18, getHeight() / 5);
-    r.removeFromBottom (labelH);
-    const int s = juce::jmin (r.getWidth(), r.getHeight());
-    slider.setBounds (r.withSizeKeepingCentre (s, s));
+    const int s = juce::jmax (8, juce::jmin (getWidth(), getHeight() - labelH));
+    const int top = (getHeight() - (s + labelH)) / 2;
+    slider.setBounds ((getWidth() - s) / 2, top, s, s);
 }
 
 void Knob::paint (juce::Graphics& g)
@@ -35,7 +35,8 @@ void Knob::paint (juce::Graphics& g)
     const int labelH = juce::jlimit (11, 18, getHeight() / 5);
     g.setColour (Colours::textDim);
     g.setFont (font ((float) labelH * 0.78f, true));
-    g.drawFittedText (label.toUpperCase(), getLocalBounds().removeFromBottom (labelH), juce::Justification::centred, 1, 0.6f);
+    g.drawFittedText (label.toUpperCase(), juce::Rectangle<int> (0, slider.getBottom(), getWidth(), labelH),
+                      juce::Justification::centred, 1, 0.6f);
 }
 
 //==============================================================================

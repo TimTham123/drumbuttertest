@@ -98,7 +98,7 @@ void LookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int 
     if (radius > 14.0f)
     {
         g.setColour (Colours::text.withAlpha (enabled ? 1.0f : 0.5f));
-        g.setFont (font (juce::jlimit (8.5f, 15.0f, radius * 0.36f)));
+        g.setFont (font (juce::jlimit (8.5f, 19.0f, radius * 0.34f)));
         auto txt = s.getTextFromValue (s.getValue());
         g.drawFittedText (txt, juce::Rectangle<int> ((int) (c.x - radius * 0.7f), (int) (c.y - radius * 0.3f),
                                                      (int) (radius * 1.4f), (int) (radius * 0.6f)),

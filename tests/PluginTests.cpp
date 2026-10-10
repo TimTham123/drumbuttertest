@@ -225,6 +225,36 @@ int main (int argc, char** argv)
                "slot 1, " + a.presets().currentName(), b.presets().activeSlot() == 1 && b.presets().currentName() == a.presets().currentName());
     }
 
+    // ---------------------------------------------------------------- restore with raw host values
+    {
+        // hosts may set arbitrary normalised values (e.g. 0.49 on a bool); after a
+        // state round trip every parameter must report the saved value again
+        DrumSpreadProcessor a;
+        juce::Random rnd (7);
+        for (int i = 0; i < ds::kNumParams; ++i)
+            a.parameter (i)->setValueNotifyingHost (rnd.nextFloat());
+        std::vector<float> saved ((size_t) ds::kNumParams);
+        for (int i = 0; i < ds::kNumParams; ++i)
+            saved[(size_t) i] = a.parameter (i)->getValue();
+        juce::MemoryBlock mb;
+        a.getStateInformation (mb);
+        for (int i = 0; i < ds::kNumParams; ++i)
+            a.parameter (i)->setValueNotifyingHost (rnd.nextFloat());
+        a.setStateInformation (mb.getData(), (int) mb.getSize());
+        int bad = 0;
+        for (int i = 0; i < ds::kNumParams; ++i)
+        {
+            auto* prm = a.parameter (i);
+            const float expectReal = prm->convertFrom0to1 (saved[(size_t) i]);
+            const float gotReal = prm->convertFrom0to1 (prm->getValue());
+            const bool discrete = ds::paramSpec (i).type != ds::PType::Float;
+            const float tol = discrete ? 0.5f : 1.0e-3f * (1.0f + std::abs (expectReal));
+            if (std::abs (gotReal - expectReal) > tol || std::abs (prm->getValue() - prm->convertTo0to1 (expectReal)) > 0.1f)
+                ++bad;
+        }
+        check ("state restore after arbitrary host values (pluginval case)", juce::String (bad) + " mismatches", "0", bad == 0);
+    }
+
     // ---------------------------------------------------------------- presets
     {
         DrumSpreadProcessor p;

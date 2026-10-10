@@ -17,6 +17,7 @@
 | state save/restore: every parameter (incl. chain order) | 0 differences (12408 bytes) | 0 | PASS |
 | state save/restore: chain order | 17 | 17 | PASS |
 | state save/restore: A/B slot and preset name | slot 1, Golden Spread | slot 1, Golden Spread | PASS |
+| state restore after arbitrary host values (pluginval case) | 0 mismatches | 0 | PASS |
 | all factory presets load exactly (host programs) | 43/43 | all | PASS |
 | next / previous (wraps around) | 1, 42 | 1, 42 | PASS |
 | user preset save -> browse -> load (XML file) | ok, drive 21.50 | ok, drive 21.50 | PASS |
@@ -25,4 +26,4 @@
 | UI snapshots at 1280x760, 980x620, 1920x1140 (resizable) | written | PNG files | PASS |
 | editor panels follow the chain-order parameter | 3210 | 3210 | PASS |
 
-**Plugin tests: 21 checks, 0 failed.**
+**Plugin tests: 22 checks, 0 failed.**

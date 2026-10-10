@@ -204,6 +204,19 @@ void DrumSpreadProcessor::setStateInformation (const void* data, int sizeInBytes
             auto st = juce::ValueTree::fromXml (*xml);
             presetManager->readFromState (st);
             apvts.replaceState (st);
+            // APVTS only pushes values whose *denormalised* value changed; a bool that
+            // was set to e.g. 0.49 (= false) would keep reporting 0.49 after restoring
+            // a saved 0. Re-sync every parameter's normalised value to the state.
+            for (int i = 0; i < ds::kNumParams; ++i)
+            {
+                auto* prm = params[(size_t) i];
+                const auto child = st.getChildWithProperty ("id", ds::paramSpec (i).id);
+                const float real = child.isValid() ? (float) (double) child.getProperty ("value", ds::paramSpec (i).defV)
+                                                   : ds::paramSpec (i).defV;
+                const float target = prm->convertTo0to1 (ds::sanitize (i, real));
+                if (std::abs (prm->getValue() - target) > 1.0e-6f)
+                    prm->setValueNotifyingHost (target);
+            }
         }
     }
 }

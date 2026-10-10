@@ -202,10 +202,11 @@ void DrumSpreadEditor::paint (juce::Graphics& g)
     g.drawText ("OVERSAMPLING", osLabelArea, juce::Justification::centredRight);
 
     // chain direction hint
-    g.setColour (Colours::track);
-    g.setFont (font (11.0f));
-    g.drawText ("IN  >  LAYER  >  [ drag to reorder ]  >  SMASH  >  MASTER  >  OUT",
-                chainArea.withHeight (14).translated (0, -15), juce::Justification::centred);
+    const float hintH = juce::jlimit (11.0f, 16.0f, (float) getHeight() / 62.0f);
+    g.setColour (Colours::textDim.withAlpha (0.6f));
+    g.setFont (font (hintH));
+    g.drawText ("IN  >  LAYER  >  [ drag panels to reorder ]  >  SMASH  >  MASTER  >  OUT",
+                chainArea.withHeight ((int) hintH + 2).translated (0, -(int) hintH - 3), juce::Justification::centred);
 
     // master panel
     g.setColour (Colours::panel);

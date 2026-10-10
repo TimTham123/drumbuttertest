@@ -20,13 +20,14 @@ Every number below was measured by the harness in this run.
 | Real-time safety (no allocations on the audio thread) | 0 allocations in `Engine::process` and in `processBlock` under automation | "Real-time" row; plugin tests |
 | Latency reporting and bypass compensation | 24 SR/OS/mode configurations exact; host bypass bit-exact | "Latency" table; plugin tests |
 | CPU < ~8 % of one core (48 kHz, stereo, 2×, all modules active) | about 6 % on the build machine | "Performance" row, "CPU load" table |
-| State save/restore incl. module order; presets; A/B; layouts | all pass | "Plugin-level tests" below |
+| State save/restore incl. module order; presets; A/B; layouts | all pass (22 plugin checks) | "Plugin-level tests" below |
+| Loads and behaves in a real VST3 host | pluginval strictness 10: SUCCESS; Steinberg VST3 validator (extended): 537/537 | "Host validation" below |
 
 ## Test environment and what was **not** tested here
 
 - Everything in this report was measured on **Linux x86-64 (GCC 13.3, Release)** in the development container.
 - **Windows/MSVC:** the same harness and plugin tests are run by the GitHub Actions workflow (`.github/workflows/build.yml`, job `windows-msvc`). Its reports are uploaded as the build artefact *DrumSpread-Windows-test-output*. The numbers below are not from Windows.
-- **Not tested:** loading the VST3 in a DAW (no host available here), and listening tests. The perceived quality of the presets was not judged by ear. The harness checks objective sanity only: level change, peak ≤ ceiling, crest factor and finiteness.
+- **Not tested:** loading the VST3 in a commercial DAW (none available here; pluginval is the host used instead, see below), and listening tests. The perceived quality of the presets was not judged by ear. The harness checks objective sanity only: level change, peak ≤ ceiling, crest factor and finiteness.
 - CPU numbers depend on the machine; the build machine is a shared cloud VM (4 vCPU).
 
 **Summary: 118 checks, 118 passed, 0 failed.**
@@ -485,6 +486,14 @@ Every number below was measured by the harness in this run.
 | Wild | Stair Steps | +2.9 dB | -1.5 dB | 15.3 -> 10.5 dB | ok |
 | Wild | Rectified Room | -2.7 dB | -1.9 dB | 15.3 -> 15.9 dB | ok |
 
+## Host validation: pluginval (Tracktion, v1.0.4), strictness level 10
+
+The Linux VST3 built here was validated in-process with `pluginval --strictness-level 10`:
+- **Result: SUCCESS.** All 25 test groups passed: scan, open cold/warm, plugin info, programs, editor, open editor while processing, audio processing, non-releasing processing, plugin state, state restoration, automation, editor automation, automatable parameters, parameters, background-thread state, parameter thread safety, the bus tests and parameter fuzzing.
+- The first run failed "Plugin state restoration" for three bool parameters. A host-set value of 0.49 (bool = false) was not re-synced after restoring a saved 0, because JUCE's APVTS skips unchanged denormalised values. This is fixed in `setStateInformation` and covered by the plugin test "state restore after arbitrary host values".
+- pluginval's Steinberg "vst3 validator" sub-test was skipped inside pluginval. The official validator was therefore built separately from the Steinberg VST3 SDK (`steinbergmedia/vst3sdk`, `public.sdk/samples/vst-hosting/validator`) and run in extended mode (`validator -e`): **537 tests passed, 0 failed**. Log: `docs/vst3_validator_extended.txt`. The validator notes "64bit Audio Processing not supported"; the plugin processes 32-bit float, which is expected.
+- Full log: `docs/pluginval_linux_strictness10.txt`. The CI workflow runs the same validation on the Windows build.
+
 ## Plugin-level tests (`plugin_tests`, JUCE)
 
 | Test | Measured | Criterion | Result |
@@ -503,6 +512,7 @@ Every number below was measured by the harness in this run.
 | state save/restore: every parameter (incl. chain order) | 0 differences (12408 bytes) | 0 | PASS |
 | state save/restore: chain order | 17 | 17 | PASS |
 | state save/restore: A/B slot and preset name | slot 1, Golden Spread | slot 1, Golden Spread | PASS |
+| state restore after arbitrary host values (pluginval case) | 0 mismatches | 0 | PASS |
 | all factory presets load exactly (host programs) | 43/43 | all | PASS |
 | next / previous (wraps around) | 1, 42 | 1, 42 | PASS |
 | user preset save -> browse -> load (XML file) | ok, drive 21.50 | ok, drive 21.50 | PASS |
@@ -511,4 +521,4 @@ Every number below was measured by the harness in this run.
 | UI snapshots at 1280x760, 980x620, 1920x1140 (resizable) | written | PNG files | PASS |
 | editor panels follow the chain-order parameter | 3210 | 3210 | PASS |
 
-**Plugin tests: 21 checks, 0 failed.**
+**Plugin tests: 22 checks, 0 failed.**
