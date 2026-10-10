@@ -27,7 +27,8 @@ public:
 private:
     void processFrame() noexcept;
     void analyse (int ch) noexcept;
-    void synthesise (int ch, bool resetPhase) noexcept;
+    void remap (int ch) noexcept;                          // pitch remap + formant correction
+    void synthesise (int ch, bool resetPhase, float gain) noexcept; // phases, IFFT, OLA
     void computeEnvelope (const float* mag, float* env) noexcept;
 
     double sr = 48000.0;
@@ -45,8 +46,13 @@ private:
     std::vector<float> prevPhase[2], synPhase[2];
     std::vector<float> mag[2], phs[2], frq[2];
     // work
-    std::vector<float> frame, re, im, outMag, outFrq, cep, envA, lift;
-    std::vector<int> srcBin;
+    std::vector<float> frame, re, im, cep, envA, lift, avgMag;
+    std::vector<float> outMag[2], outFrq[2];
+    std::vector<int> srcBin[2];
+    float energyGain = 1.0f; // frame-wise loudness matching (smoothed across frames)
+    // slow time-domain loudness match of the PV output against the (aligned) input:
+    // compensates the overlap-add coherence loss of decorrelated frames (~3 dB)
+    float agcIn = 0.0f, agcOut = 0.0f, agcGain = 1.0f, agcA = 0.0f, agcGA = 0.0f;
     float prevEnergy = 0.0f;
     bool envValid = false;
     int framesSinceTransient = 100;

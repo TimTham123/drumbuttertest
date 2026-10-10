@@ -127,7 +127,7 @@ struct Ramp
         end = to;
     }
     float next() noexcept { value += inc; return value; }
-    bool isConstantZero() const noexcept { return value == 0.0f && end == 0.0f; }
+    bool isConstantZero() const noexcept { return std::fabs (value) + std::fabs (end) <= 0.0f; }
 };
 
 /** Raised-cosine (equal-gain) crossfade curve, t in [0,1]. */
@@ -155,7 +155,7 @@ inline float fastAtan2 (float y, float x) noexcept
 {
     const float ax = std::fabs (x), ay = std::fabs (y);
     const float mx = std::max (ax, ay), mn = std::min (ax, ay);
-    if (mx == 0.0f)
+    if (mx <= 0.0f)
         return 0.0f;
     const float a = mn / mx;
     const float s = a * a;

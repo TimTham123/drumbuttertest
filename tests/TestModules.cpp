@@ -908,6 +908,30 @@ void testShift()
                    fmt ("%d vs %d samples (%.1f ms)", rep, meas, rep / kSR * 1000.0), "|diff| <= 2 ms",
                    std::abs (meas - rep) <= (int) (0.002 * kSR));
     }
+    // loudness preservation (drum loop and noise, -12..+12 st, both modes, linked or not)
+    {
+        auto loop = makeDrumLoop (kSR, 120, 4, 2024).audio;
+        auto nz = noise (kSR, 0.3, loop.size(), 3);
+        double worst = 0;
+        int cases = 0;
+        for (int mode : { kWarpHQ, kWarpLoFi })
+            for (float st : { -12.0f, -5.0f, 3.0f, 7.0f, 12.0f })
+                for (int link : { 0, 1 })
+                    for (auto* in : { &loop, &nz })
+                    {
+                        auto p = defaults();
+                        p[kWarpPitch] = st;
+                        p[kWarpMode] = (float) mode;
+                        p[kWarpLink] = (float) link;
+                        auto mod = std::make_unique<WarpModule>();
+                        auto out = runDirect (*mod, kSR, 1, mode, *in, p);
+                        const double d = toDb (rms (out.L, 48000) / rms (in->L, 0, in->size() - 48000));
+                        worst = std::max (worst, std::fabs (d));
+                        ++cases;
+                    }
+        addResult ("Shift", "loudness preserved across shifts (drums + noise, both modes)",
+                   fmt ("worst %.2f dB over %d cases", worst, cases), "within +-1.5 dB", worst <= 1.5);
+    }
     // neutral: exact delay
     {
         auto p = defaults();

@@ -83,13 +83,17 @@ Why this design and not a plain Linkwitz-Riley band split:
   latency, and composes cleanly with Mix and Bypass: `out = dx` exactly at
   0 % mix.
 - Tradeoff: the residual is not itself a clean filter shape. A module that
-  changes the in-band level by a gain g gives a band-edge response of
-  |1 + (g−1)·B(f)|. With 2nd-order Butterworth edges, B(fc) = ±j/√2 (90°
-  phase), so at the edge frequency the response is √(1 + (g−1)²/2). Fully
-  removing the band (g = 0) leaves a +1.76 dB bump at fc (worst case +2.1 dB
-  just below fc). A +6 dB boost (g = 2) reaches +1.76 dB at fc. This is
-  monotonic, with no notch. 24 dB/oct LR4 edges would give a −6 dB notch at
-  fc for g = 2. 12 dB/oct is therefore the deliberate choice.
+  changes the in-band level by a gain g gives a response of
+  |1 + (g−1)·HP(f)·LP(f)|. With a single 2nd-order Butterworth edge,
+  B(fc) = ±j/√2 (90° phase), so at the edge frequency the response is
+  √(1 + (g−1)²/2). Fully removing the band (g = 0) leaves a +1.76 dB bump at
+  fc (worst case +2.1 dB just below fc). A +6 dB boost (g = 2) reaches
+  +1.76 dB at fc. This is monotonic, with no notch. 24 dB/oct LR4 edges would
+  give a −6 dB notch at fc for g = 2. 12 dB/oct is therefore the deliberate
+  choice. With both edges engaged, the other filter's phase shifts these
+  values slightly (focus 300 Hz–3 kHz: +1.14 dB at 300 Hz for g = 0). The
+  harness compares the measured response with the analytic formula; it
+  matches within 0.25 dB **[verified]**.
 - "Off" positions: Lo ≤ 20.5 Hz or Hi ≥ 19.5 kHz disables that filter, so
   the band equals the full signal.
 - For the additive modules (LAYER, ROOM), focus shapes what the module
@@ -130,12 +134,27 @@ naturally ("transient-only send" is the classic trick for a clean room).
 
 ### 4.1 LAYER (fixed first)
 **Sub section**
-- Kick detector: 2nd-order LP at 150 Hz, rectified. Fast envelope (0.3 ms /
-  30 ms) and slow envelope (12 ms / 30 ms). A trigger fires when
-  dB(fast) − dB(slow) > riseThresh **and** fast > absThresh, with a 70 ms
-  retrigger hold-off.
-- `sens` 0–100 % maps absThresh from −12 to −54 dBFS and riseThresh from
-  9 to 3 dB.
+- Kick detector, as built after tuning against the harness:
+  - Band: 4th-order Linkwitz-Riley LP at 150 Hz plus a 2nd-order HP at 60 Hz.
+    The HP attenuates the previous kick's tail and sustained bass notes.
+  - Envelopes on band power: fast (1.5 ms / 20 ms) and slow (20 ms / 60 ms).
+    The slow release is longer than the fast one, so the fast/slow ratio
+    collapses inside decays. With equal releases the ratio stays frozen and
+    the detector re-triggers on every hold-off.
+  - A trigger needs all of the following:
+    1. Fast power above the absolute threshold.
+    2. A rise over the slow envelope.
+    3. Low-band dominance: band power > −10 dB of full-band power. This
+       rejects snare bodies.
+    4. A level within a relative threshold of a ~1.5 s decaying memory of
+       recent kick peaks.
+    5. 3 dB above a 300 ms background average. This rejects sustained bass.
+  - The detector re-arms only after the envelope has fallen 3 dB below the
+    triggering peak, plus a 70 ms hold-off.
+- `sens` 0–100 % maps:
+  - absThresh from −12 to −54 dBFS;
+  - the rise from 6 to 0 dB (3 dB at 50 %);
+  - the relative threshold from −4 to −12 dB (−8 dB at 50 %).
 - Velocity is captured over the first 6 ms after the trigger: (peak −
   absThresh)/18 dB, clamped to [0.3, 1].
 - Oscillator: sine with a pitch envelope
@@ -143,22 +162,27 @@ naturally ("transient-only send" is the classic trick for a clean room).
   8 ms, 60 ms). The amplitude has a 1.5 ms raised-cosine attack, then an
   exponential decay with T60 = `decay`.
 - **Phase alignment:** at the trigger, the instantaneous phase of the
-  low-passed source is estimated by quadrature-by-differentiation,
-  φ = atan2(lp, lp′/ω). The oscillator starts at that phase, so it
+  band-filtered source is estimated by quadrature-by-differentiation,
+  φ = atan2(lp, lp′/ω). The analytic phase lag of the detection filter at the
+  start frequency is added back. The oscillator starts at that phase, so it
   reinforces rather than cancels the source's fundamental. The same estimate
   sets the polarity.
 - **Growl:** the oscillator is synthesized directly at the oversampled rate.
   It is shaped by an asymmetric tanh (drive 1…16×), blended by `growl`, and
   decimated with the halfband decimator. The decimator's group delay
-  (12.5 / 16 base samples at 2×/4×) is compensated by advancing the
+  (12.5 / 15.75 base samples at 2×/4×) is compensated by advancing the
   oscillator phase rather than by adding plugin latency. The sub is a
   synthesized layer, so a 0.3 ms offset relative to a detector that already
   fires 1–3 ms after the onset is inaudible.
 - Two voices: a retrigger fades the old voice out over 5 ms.
 
 **Noise section**
-- Snare/hat detector: 2nd-order HP at 2 kHz with the same dual-envelope
-  scheme (0.2 ms / 25 ms vs 8 ms / 25 ms) and a 35 ms hold-off.
+- Snare/hat detector: 4th-order LR HP at 2 kHz with power envelopes, fast
+  (1 ms / 15 ms) vs slow (12 ms / 30 ms).
+  - Rise of 7.5–1.5 dB (4.5 dB at 50 %), re-arm at −3 dB, 40 ms hold-off.
+  - **Kick-click veto:** the noise voice starts immediately. If the kick
+    detector confirms a kick within 8 ms, the onset was the kick's beater
+    click: the noise voice is cancelled with a 2 ms fade and not counted.
 - Types:
   - White: xorshift32, uniform, decorrelated L/R.
   - Pink: Paul Kellet's refined 7-pole filter.
@@ -184,15 +208,32 @@ Phase vocoder with transient phase reset and cepstral formant envelope:
   with frequency P·ω (the strongest contributor wins). Output phases are
   accumulated as ψj += H·ω′.
 - Formant: the spectral envelope is estimated by cepstral smoothing (real
-  cepstrum, lifter with nc = N/16 and a raised-cosine taper). It is applied
-  as a correction factor env(j/F)/env(j/P) to the remapped magnitudes. The
-  cepstrum is computed only when F ≠ P.
+  cepstrum, lifter with nc = N/8, i.e. 2.7 ms, and a raised-cosine taper).
+  - It is computed once per frame from the mean L/R magnitude and applied as
+    a correction factor env(j/F)/env(j/P) to the remapped magnitudes. The
+    cepstrum is computed only when F ≠ P.
+  - nc = N/16 under-shifted the formant by about 50 %. N/8 measures within
+    ±5 % **[verified]**, using noise through a resonance.
+  - Limitation: harmonic sources with F0 > 375 Hz have a pitch quefrency
+    below the lifter, so their envelope picks up pitch ripple. Drums are
+    largely unaffected.
 - Linked mode: effective formant = formant + pitch, so with formant = 0 it
   behaves like a varispeed shift.
 - Transients: frame-to-frame high-frequency-weighted log-spectral flux above a
   threshold flags a transient frame. All output phases are then reset to the
   analysis phases of their source bins (Röbel/Duxbury-style phase reset). With
   centered frames, a click at the frame center stays vertically coherent.
+- Loudness matching. The raw PV output level drifted from −11 dB to
+  +7 dB depending on the shift, the formant mode and the material, because of
+  empty or merged bins, content pushed past Nyquist and the envelope correction.
+  Two stages correct this:
+  1. A frame-wise spectral energy match (output to input frame energy, shared
+     by L/R, ±12 dB, smoothed over ~3 frames).
+  2. A slow 150 ms time-domain match against the aligned input (±6 dB, held
+     in silence). This covers the ~3 dB overlap-add coherence loss of
+     decorrelated frames.
+  Measured: within ±0.5 dB over −12…+12 st, both modes, on drums and noise
+  **[verified]**.
 - Neutral shortcut: when P = F = 1 the wet path is the exactly delayed input.
   Leaving neutral warms the PV for N samples, then crossfades over 20 ms.
 - Latency: N − 1 samples. At 48 kHz that is 21.3 ms (HQ) or 5.3 ms (Lo-Fi).
@@ -210,7 +251,7 @@ normalization (§4.3.1).
 | Type | Structure |
 |------|-----------|
 | Room | 14-tap stereo early-reflection pattern (taps scaled by Size, alternating L/R, 1/r-style gains) + 8-line FDN (Householder feedback matrix). Base delays 23–61 ms × (0.35…1.6 by Size), per-line Jot-style one-pole absorption filters giving the DC T60 = Decay and HF T60 = Decay·(0.15…0.9 by Tone). |
-| Plate | Dattorro figure-of-eight tank (JAES 1997): 4 input diffusers (142/107/379/277 samples @29761 Hz, coefficients 0.75/0.625), modulated decay diffusers (672/908, ±8 samples at ~1 Hz), damping, decay diffusers 1800/2656, tank delays 4453/3720/4217/3163, and the published 7-tap L/R output sums. All lengths are scaled to the current SR and by Size (0.6…1.4). |
+| Plate | Dattorro figure-of-eight tank (JAES 1997): 4 input diffusers (142/107/379/277 samples @29761 Hz, coefficients 0.75/0.625), modulated decay diffusers (672/908, ±8 samples at ~1 Hz), damping, decay diffusers 1800/2656, tank delays 4453/3720/4217/3163, and the published 7-tap L/R output sums. All lengths are scaled to the current SR and by Size (0.5…1.3). The decay gain occurs **twice per tank half**, so decay = 10^(−3·loop/(4·T60)). The first implementation used 2·T60 and measured exactly half the set RT60. |
 | Spring | Two springs (L/R, lengths differ by 13 %): a spectral-delay chain of 64 first-order allpasses (a = −0.62) inside a feedback loop with a 28–45 ms delay (by Size), loop gain from Decay, a 4.5 kHz LP, and slow random delay modulation. This follows the Välimäki/Parker/Abel "parametric spring reverb" idea. |
 | Gated | Dense FDN (Room engine, fixed T60 3 s) followed by a gate keyed from the send envelope. The gate opens on a rise, holds for Decay (clamped to 40 ms–1.5 s) and closes in 15 ms. This gives the classic gated-snare shape. |
 | Vintage | 4-line FDN with chorused delays (0.4–1.3 Hz, ±2 ms), wet band-limited to 9 kHz × Tone, plus 12-bit quantization of the wet signal for an early-digital grain. |
@@ -222,10 +263,21 @@ detuned springs. This is **[verified]** by the inter-channel correlation of
 the wet output for mono input (report: `room.stereo`).
 
 #### 4.3.1 Gain staging
-ROOM is additive (`out = dx + mix·w_send·wet`). The wet signal is normalized by
-a per-type constant times √(d̄/T60) (d̄ = mean loop delay), calibrated by the
-harness so that 100 % mix gives roughly equal wet and dry RMS on the reference
-drum loop across Decay settings. The dry signal never changes level.
+ROOM is additive (`out = dx + mix·w_send·wet`), and the dry signal never
+changes level.
+- The wet signal is normalized by g_type·(1 + T/0.6 s)^−0.45, where T is the
+  decay time (the gate hold for Gated). This law was fitted to the measured
+  growth of wet energy with decay time on drum material.
+- g_type is calibrated by the harness so that 100 % mix gives wet RMS ≈ −4 dB
+  re dry for every type. Measured: −3.9…−4.0 dB, with a 0.5 dB spread over
+  Decay 0.3…8 s **[verified]**.
+
+#### 4.3.2 Type switching
+The new algorithm's **input** fades in over 50 ms while the old algorithm's
+input fades out. The old algorithm keeps running, so its tail rings on and
+fades out over a further 250 ms. A plain output crossfade from a freshly reset
+reverb produced an audible onset (click-test ratio 3.0), because a reset reverb
+is hit by a full-level signal.
 
 ### 4.4 PRESS (compressor)
 Everything runs at the oversampled rate (§6) so the coloration stages do not
@@ -444,7 +496,7 @@ Let k = intensity/100 ∈ [0, 2], a = min(k, 1) ("blend"), b = max(k − 1, 0)
 
 ### 6.1 Oversampler
 A cascade of linear-phase halfband FIR stages (Kaiser-windowed sinc,
-β = 7.86, about 80 dB design stopband), implemented polyphase. One branch of
+β = 7.86; measured stopband −78.4 dB and passband ripple 0.001 dB **[verified]**), implemented polyphase. One branch of
 each halfband is a pure delay, so only (N+1)/2 taps are computed per output
 pair.
 - Stage A (1×↔2×): 51 taps. Passband edge 0.2·fs₂ₓ (19.2 kHz at 48 kHz),
@@ -477,10 +529,10 @@ via `getBypassParameter()`.
 | Change | Mechanism |
 |--------|-----------|
 | Any continuous parameter | 16-sample control rate, per-sample linear ramps, one-pole target smoothing (~20 ms); filter coefficients recomputed per 16-sample chunk (TPT SVFs stay stable under modulation) |
-| Module order | **True crossfade.** The four reorderable slots exist twice (bank A / bank B). On a reorder, the active bank's full DSP state is copied into the idle bank (preallocated, no allocation). The idle bank runs the new order, the active bank the old order, and their outputs are crossfaded over 40 ms (raised cosine). Then the banks swap. Reverb tails, compressor envelopes and so on continue seamlessly. |
+| Module order | **True crossfade.** The four reorderable slots exist twice (bank A / bank B). On a reorder, the active bank's full DSP state is copied into the idle bank (preallocated, no allocation). The idle bank runs the new order and the active bank the old order. The new-order bank first runs silently for Σ(slot latencies) samples, so that each slot's latency-compensation history (which still holds the input from its old position) is flushed. Then the outputs are crossfaded over 40 ms (raised cosine) and the banks swap. Without the flush, a hard step appeared exactly L samples after the reorder (click-test ratio 13.9; below 1 after the fix, 0.83 in the final report). |
 | Module bypass | 20 ms ramp of the slot gain (see §3.3) |
 | Mode/type within a module | old and new mode processors both run for 20–25 ms with an equal-gain crossfade |
-| Oversampling factor / WARP mode (these change latency) | 8 ms global fade-out → reconfigure (reset OS filters, retune delays) → 8 ms fade-in. The message-thread timer then calls `setLatencySamples()` |
+| Oversampling factor / WARP mode (these change latency) | 15 ms global fade-out → reconfigure → 3 ms silent hold (restarted filters settle) → 15 ms fade-in. Reconfiguring keeps all module state that stays valid: only oversampled-rate filter states restart, ROOM and the compressor envelopes continue, WARP resets only when its mode changes, and every compensation delay keeps its history and just reads at the new length. The message-thread timer then calls `setLatencySamples()`. |
 
 ### 6.4 Block-size independence
 The engine splits every host block at absolute 16-sample boundaries, so control
@@ -550,6 +602,12 @@ STFT hops and FIR states are streaming. With static parameters, the output is
 ```
 - Panels follow the chain order. Drag a reorderable panel's grip (⠿) onto
   another position, or use the ◀ ▶ buttons, to move it.
+- As built:
+  - Each panel header has two rows (title + on/off; mode selector + move
+    buttons).
+  - **INTENSITY** is the large knob at the left of the MASTER section.
+  - Snapshots of the editor at 980×620, 1280×760 and 1920×1140 are written by
+    `plugin_tests`; see `docs/`.
 - Design language: "ink & signal". The background is a deep blue-black
   (#12151C) with panel cards in #1B202B. Each module has its own signal
   colour: LAYER amber, WARP violet, PRESS coral, HEAT vermilion, ROOM teal,
@@ -629,7 +687,22 @@ STFT hops and FIR states are streaming. With static parameters, the output is
   A. Simper, "Linear trapezoidal integrated SVF" (Cytomic technical papers).
 - P. Kellet, pink-noise filter (music-dsp archive).
 
-## 12. Unverified items (flagged)
+## 12. Known limitations (measured)
+- **Kick detector with a sustained bass line.** Slow beating between a kick
+  tail and a bass note can still trigger the sub layer. On the synthetic
+  bass-line confounder: 41/42 kicks hit, 13 false triggers. Lowering Sub Sens
+  reduces this. The drum-only patterns score 100 % hits with 0 false
+  triggers.
+- **Hard-clipping modes at extreme drive** (Tape/Fuzz at +24 dB on a 7.9 kHz
+  tone) improve only ~7 dB from 1× to 2× oversampling, because their harmonics
+  decay as ~1/k. 4× gives a further ~8–9 dB, so use 4× for extreme settings on
+  bright material.
+- **WARP HQ latency is 21 ms.** This is the price of 47 Hz frequency
+  resolution. Lo-Fi is 5.3 ms.
+- **Vintage RT60** is about 10 % shorter than the Decay setting, because the
+  chorus modulation adds loss.
+
+## 13. Unverified items (flagged)
 - The **spring chirp direction** (low frequencies delayed more, i.e. a
   descending chirp, with a = −0.62) follows my reading of the dispersion
   literature. It was not checked against a measured spring.

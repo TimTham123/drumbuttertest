@@ -316,8 +316,16 @@ void Engine::processSegment (const float* inL, const float* inR, float* outL, fl
             oR += cm * (softClipKnee (oR, c, 0.7f * c) - oR);
         }
         const float b = bypassRamp.next();
-        oL += b * (yl - oL);
-        oR += b * (yr - oR);
+        if (b >= 1.0f)
+        {
+            oL = yl; // fully bypassed: exact latency-compensated dry signal
+            oR = yr;
+        }
+        else
+        {
+            oL += b * (yl - oL);
+            oR += b * (yr - oR);
+        }
         const float cg = cfgRamp.next();
         oL *= cg;
         oR *= cg;

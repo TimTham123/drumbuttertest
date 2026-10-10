@@ -142,6 +142,7 @@ public:
             mixSm.snap (mixT);
             bypGain = bypassReq ? 0.0f : 1.0f;
             state = bypassReq ? Bypassed : Active;
+            sendLevel = bypassReq ? 0.0f : 1.0f;
             gRamp.snap (mixT * bypGain);
         }
 
@@ -181,12 +182,25 @@ public:
         const float gStart = gRamp.end;
         const float gTarget = mixSm.step() * bypGain;
         gRamp.rampTo (gTarget);
-        skipMod = (state == Bypassed) && gStart == 0.0f && gTarget == 0.0f;
-        gZero = gStart == 0.0f && gTarget == 0.0f;
+        gZero = ! (gStart > 0.0f) && ! (gTarget > 0.0f); // both exactly zero (gains are >= 0)
+        skipMod = (state == Bypassed) && gZero;
 
         const float bias = clampf (p[sharedParam (moduleId, kSfTarget)] * 0.01f, -1.0f, 1.0f);
         const float tr = det.evaluate();
-        wRamp.rampTo (TransientDetector::weight (tr, bias));
+        float wTarget = TransientDetector::weight (tr, bias);
+        if (Mod::kSendTarget)
+        {
+            // send-type modules (reverb): a re-engaged module was reset, so its input
+            // (send) ramps in together with the output instead of hitting it at full level
+            if (state == Active)
+                sendLevel = std::min (1.0f, sendLevel + bypStep);
+            else if (state != Bypassed)
+                sendLevel = 0.0f;
+            else if (skipMod)
+                sendLevel = 0.0f;
+            wTarget *= sendLevel;
+        }
+        wRamp.rampTo (wTarget);
 
         if (! skipMod)
             mod.control (p, ctx);
@@ -243,7 +257,7 @@ private:
     bool hpOn = false, lpOn = false;
     ChunkSmoother mixSm, loSm, hiSm;
     Ramp gRamp, wRamp;
-    float bypGain = 1.0f, bypStep = 0.01f;
+    float bypGain = 1.0f, bypStep = 0.01f, sendLevel = 1.0f;
     State state = Active;
     int warmCount = 0;
     bool skipMod = false, gZero = false, firstControl = true;

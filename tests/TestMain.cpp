@@ -1,6 +1,6 @@
 // DrumSpread offline verification harness - entry point.
 //
-// Usage: dscore_tests [outputDir] [reportPath] [--no-renders] [--quick]
+// Usage: dscore_tests [outputDir] [reportPath] [--no-renders] [--perf-only] [--no-perf-gate]
 //   outputDir  : where demo WAVs are written (default: test_output)
 //   reportPath : markdown report (default: <outputDir>/TEST_REPORT.md)
 #include "TestSuites.h"
@@ -47,7 +47,7 @@ int main (int argc, char** argv)
     std::string outDir = "test_output";
     std::string reportPath;
     bool renders = true;
-    bool perfOnly = false;
+    bool perfOnly = false, perfGate = true;
     int positional = 0;
     for (int i = 1; i < argc; ++i)
     {
@@ -56,6 +56,8 @@ int main (int argc, char** argv)
             renders = false;
         else if (a == "--perf-only")
             perfOnly = true;
+        else if (a == "--no-perf-gate")
+            perfGate = false;
         else if (positional == 0)
         {
             outDir = a;
@@ -77,7 +79,7 @@ int main (int argc, char** argv)
 
     // CPU first: later in the run the machine has been at full load for a minute
     // (turbo/thermal state), which would bias the measurement
-    tu::testPerformance();
+    tu::testPerformance (perfGate);
     if (perfOnly)
         return tu::numFailures() == 0 ? 0 : 1;
     tu::testOversampler();

@@ -1,0 +1,75 @@
+name: build-and-verify
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows-msvc:
+    name: Windows x64 (MSVC) - VST3 + Standalone + tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (Visual Studio generator, x64)
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+
+      - name: DSP verification harness
+        run: build\Release\dscore_tests.exe test_output test_output\TEST_REPORT_windows.md --no-perf-gate
+
+      - name: Plugin-level tests
+        run: build\plugin_tests_artefacts\Release\plugin_tests.exe test_output
+
+      - name: Upload plugin binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DrumSpread-Windows-x64
+          path: |
+            build/DrumSpread_artefacts/Release/VST3/
+            build/DrumSpread_artefacts/Release/Standalone/DrumSpread.exe
+          if-no-files-found: warn
+
+      - name: Upload test report and renders
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DrumSpread-Windows-test-output
+          path: test_output/
+          if-no-files-found: warn
+
+  linux:
+    name: Linux (GCC) - VST3 + Standalone + tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install JUCE dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libgl1-mesa-dev xvfb
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: DSP verification harness
+        run: ./build/dscore_tests test_output test_output/TEST_REPORT_linux.md --no-perf-gate
+
+      - name: Plugin-level tests
+        run: xvfb-run -a -s "-screen 0 2048x1536x24" ./build/plugin_tests_artefacts/Release/plugin_tests test_output
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DrumSpread-Linux-test-output
+          path: test_output/
+          if-no-files-found: warn

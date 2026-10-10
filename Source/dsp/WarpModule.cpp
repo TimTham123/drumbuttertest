@@ -30,20 +30,23 @@ void WarpModule::prepare (double sampleRate)
         mag[ch].assign (bmax, 0.0f);
         phs[ch].assign (bmax, 0.0f);
         frq[ch].assign (bmax, 0.0f);
+        outMag[ch].assign (bmax, 0.0f);
+        outFrq[ch].assign (bmax, 0.0f);
+        srcBin[ch].assign (bmax, 0);
     }
     frame.assign (nmax, 0.0f);
     re.assign (bmax, 0.0f);
     im.assign (bmax, 0.0f);
-    outMag.assign (bmax, 0.0f);
-    outFrq.assign (bmax, 0.0f);
+    avgMag.assign (bmax, 0.0f);
     cep.assign (nmax, 0.0f);
     envA.assign (bmax, 0.0f);
     lift.assign (nmax, 0.0f);
-    srcBin.assign (bmax, 0);
     const float chunkRate = (float) sr / (float) kChunk;
     pitchSm.setup (chunkRate, 0.03f, 0.0f);
     formSm.setup (chunkRate, 0.03f, 0.0f);
     pvStep = 1.0f / (0.02f * (float) sr);
+    agcA = tauCoef (0.15f, (float) sr);
+    agcGA = tauCoef (0.05f, (float) sr);
     initialised = false;
     configure (1, kWarpHQ);
 }
@@ -90,6 +93,9 @@ void WarpModule::reset()
     pos = 0;
     hopCount = 0;
     prevEnergy = 0.0f;
+    energyGain = 1.0f;
+    agcIn = agcOut = 0.0f;
+    agcGain = 1.0f;
     framesSinceTransient = 100;
     pvRunning = false;
     pvGain = 0.0f;
@@ -165,14 +171,13 @@ void WarpModule::analyse (int ch) noexcept
     }
 }
 
-void WarpModule::synthesise (int ch, bool resetPhase) noexcept
+void WarpModule::remap (int ch) noexcept
 {
     const float* mg = mag[ch].data();
-    const float* ph = phs[ch].data();
     const float* fr = frq[ch].data();
-    float* om = outMag.data();
-    float* of = outFrq.data();
-    int* sb = srcBin.data();
+    float* om = outMag[ch].data();
+    float* of = outFrq[ch].data();
+    int* sb = srcBin[ch].data();
     for (int k = 0; k < nb; ++k)
     {
         om[k] = 0.0f;
@@ -214,7 +219,14 @@ void WarpModule::synthesise (int ch, bool resetPhase) noexcept
             om[j] *= fastExp (d);
         }
     }
-    // phase synthesis
+}
+
+void WarpModule::synthesise (int ch, bool resetPhase, float gain) noexcept
+{
+    const float* ph = phs[ch].data();
+    const float* om = outMag[ch].data();
+    const float* of = outFrq[ch].data();
+    const int* sb = srcBin[ch].data();
     float* sp = synPhase[ch].data();
     const float h = (float) H;
     for (int j = 0; j < nb; ++j)
@@ -225,8 +237,9 @@ void WarpModule::synthesise (int ch, bool resetPhase) noexcept
             sp[j] = princarg (sp[j] + h * of[j]);
         float sn, cs;
         fastSinCos (sp[j], sn, cs);
-        re[(size_t) j] = om[j] * cs;
-        im[(size_t) j] = om[j] * sn;
+        const float m = om[j] * gain;
+        re[(size_t) j] = m * cs;
+        im[(size_t) j] = m * sn;
     }
     auto& f = fft[fftIdx];
     f.inverse (re.data(), im.data(), frame.data());
@@ -269,13 +282,26 @@ void WarpModule::processFrame() noexcept
     envValid = std::fabs (F - P) > 1.0e-4f;
     if (envValid)
     {
-        float* avg = outMag.data(); // used as scratch before synthesis
+        float* avg = avgMag.data();
         for (int k = 0; k < nb; ++k)
             avg[k] = 0.5f * (mag[0][(size_t) k] + mag[1][(size_t) k]);
         computeEnvelope (avg, envA.data());
     }
-    synthesise (0, resetPhase);
-    synthesise (1, resetPhase);
+    remap (0);
+    remap (1);
+    // loudness matching: scale the shifted spectrum to the input frame energy (shared
+    // by both channels, clamped to +-12 dB and smoothed over ~3 frames)
+    double ein = 0.0, eout = 0.0;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int k = 0; k < nb; ++k)
+        {
+            ein += (double) mag[ch][(size_t) k] * mag[ch][(size_t) k];
+            eout += (double) outMag[ch][(size_t) k] * outMag[ch][(size_t) k];
+        }
+    const float gTarget = eout > 1.0e-20 ? clampf ((float) std::sqrt (ein / eout), 0.25f, 4.0f) : 1.0f;
+    energyGain = resetPhase && framesSinceTransient > 50 ? gTarget : energyGain + 0.35f * (gTarget - energyGain);
+    synthesise (0, resetPhase, energyGain);
+    synthesise (1, resetPhase, energyGain);
 }
 
 void WarpModule::process (const float* inL, const float* inR, float* outL, float* outR, const float*, int n) noexcept
@@ -320,17 +346,27 @@ void WarpModule::process (const float* inL, const float* inR, float* outL, float
 
         // neutral path: the oldest sample in the ring = input delayed by N-1
         const int oldest = (pos + 1) & mask;
-        for (int ch = 0; ch < 2; ++ch)
+        if (pvRunning)
         {
-            const float dry = inRing[ch][(size_t) oldest];
-            float y = dry;
-            if (pvRunning)
+            const float d0 = inRing[0][(size_t) oldest], d1 = inRing[1][(size_t) oldest];
+            const float p0 = outAcc[0][(size_t) pos], p1 = outAcc[1][(size_t) pos];
+            outAcc[0][(size_t) pos] = 0.0f;
+            outAcc[1][(size_t) pos] = 0.0f;
+            const float pin = d0 * d0 + d1 * d1, pout = p0 * p0 + p1 * p1;
+            agcIn = flushTiny (pin + agcA * (agcIn - pin));
+            agcOut = flushTiny (pout + agcA * (agcOut - pout));
+            if (agcIn > 1.0e-9f && agcOut > 1.0e-9f) // hold the gain through silence
             {
-                const float pv = outAcc[ch][(size_t) pos];
-                outAcc[ch][(size_t) pos] = 0.0f;
-                y = dry + (pv - dry) * pvGain;
+                const float gT = clampf (std::sqrt (agcIn / agcOut), 0.5f, 2.0f);
+                agcGain = gT + agcGA * (agcGain - gT);
             }
-            out[ch][i] = y;
+            out[0][i] = d0 + (p0 * agcGain - d0) * pvGain;
+            out[1][i] = d1 + (p1 * agcGain - d1) * pvGain;
+        }
+        else
+        {
+            out[0][i] = inRing[0][(size_t) oldest];
+            out[1][i] = inRing[1][(size_t) oldest];
         }
     }
 }

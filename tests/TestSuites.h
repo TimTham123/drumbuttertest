@@ -23,7 +23,7 @@ void testExtremes();
 void testSampleRateIndependence();
 void testBlockSizeIndependence();
 void testRealtimeAllocations();
-void testPerformance();
+void testPerformance (bool gate = true);
 void testPresets (bool writeRenders);
 
 // allocation counter (TestMain.cpp)
