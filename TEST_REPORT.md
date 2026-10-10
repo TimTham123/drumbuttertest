@@ -21,6 +21,7 @@ Every number below was measured by the harness in this run.
 | Latency reporting and bypass compensation | 24 SR/OS/mode configurations exact; host bypass bit-exact | "Latency" table; plugin tests |
 | CPU < ~8 % of one core (48 kHz, stereo, 2×, all modules active) | about 6 % on the build machine | "Performance" row, "CPU load" table |
 | State save/restore incl. module order; presets; A/B; layouts | all pass (22 plugin checks) | "Plugin-level tests" below |
+| Memory safety / undefined behaviour | ASan + UBSan + LSan clean over the full harness | "Sanitizers" below |
 | Loads and behaves in a real VST3 host | pluginval strictness 10: SUCCESS; Steinberg VST3 validator (extended): 537/537 | "Host validation" below |
 
 ## Test environment and what was **not** tested here
@@ -485,6 +486,10 @@ Every number below was measured by the harness in this run.
 | Wild | Spring Chaos | +3.5 dB | -1.7 dB | 15.3 -> 9.7 dB | ok |
 | Wild | Stair Steps | +2.9 dB | -1.5 dB | 15.3 -> 10.5 dB | ok |
 | Wild | Rectified Room | -2.7 dB | -1.9 dB | 15.3 -> 15.9 dB | ok |
+
+## Sanitizers
+
+The complete DSP harness was also built with `-fsanitize=address,undefined -fno-sanitize-recover=undefined` (GCC 13, RelWithDebInfo) and run with leak detection on. Result: **no AddressSanitizer, UndefinedBehaviorSanitizer or LeakSanitizer reports**, and 117/117 gated checks passed. The CPU check is informational in this build, because sanitizers distort timing.
 
 ## Host validation: pluginval (Tracktion, v1.0.4), strictness level 10
 
