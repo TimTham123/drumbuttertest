@@ -1,0 +1,10 @@
+# build trees
+build*/
+out/
+cmake-build-*/
+.vs/
+*.user
+# local harness output (the committed report/renders live in the repo root / renders/)
+test_output/
+/tmp/
+.DS_Store
